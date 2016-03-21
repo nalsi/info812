@@ -158,6 +158,18 @@ In order to display the basic characteristics, boxplot and histogram of the thre
 
 ```{R fig.width = 7, fig.height = 10, echo = FALSE, warning=FALSE}
 
+width.lm <- lm(width ~ period, data = moma)
+width.stdres <- rstandard(width.lm)
+moma$width.stdres <- width.stdres
+
+height.lm <- lm(height ~ period, data = moma)
+height.stdres <- rstandard(height.lm)
+moma$height.stdres <- height.stdres
+
+ratio.lm <- lm(ratio ~ period, data = moma)
+ratio.stdres <- rstandard(ratio.lm)
+moma$ratio.stdres <- ratio.stdres
+
 par(mfrow = c(3,2))
 
 boxplot(moma$width_stdres~moma$period, main = "Residual of width over period", xlab = "Period", ylab = "Residual")
@@ -180,9 +192,6 @@ par(mfrow = c(3,2))
 
 ## width
 
-width.lm <- lm(width ~ period, data = moma)
-width.stdres <- rstandard(width.lm)
-moma$width.stdres <- width.stdres
 qqnorm(width.stdres, 
        ylab = "Standardized Residuals",
        xlab = "Normal Scores of width/period",
@@ -192,9 +201,6 @@ hist(width.stdres, breaks = 200) ## histogram
 
 ## height
 
-height.lm <- lm(height ~ period, data = moma)
-height.stdres <- rstandard(height.lm)
-moma$height.stdres <- height.stdres
 qqnorm(height.stdres, 
        ylab = "Standardized Residuals",
        xlab = "Normal Scores of height/period",
@@ -204,9 +210,6 @@ hist(height.stdres, breaks = 200) ## histogram
 
 ## ratio
 
-ratio.lm <- lm(ratio ~ period, data = moma)
-ratio.stdres <- rstandard(ratio.lm)
-moma$ratio.stdres <- ratio.stdres
 qqnorm(ratio.stdres, 
        ylab = "Standardized Residuals",
        xlab = "Normal Scores of ratio/period",
