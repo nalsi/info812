@@ -1,0 +1,342 @@
+---
+title: 'Info812 final project: How the size of canvas of Western paintings changed
+  since 19th century? (Final version, revised)'
+output: word_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+
+library(dplyr)
+library(stringr)
+library(nortest)
+library(ggplot2)
+library(ggthemes)
+
+moma <- read.csv("moma_artwork.csv", stringsAsFactors = FALSE) %>% filter(Classification == 'Painting') %>% mutate(cleandate = str_extract(Date,"\\d\\d\\d\\d"))
+
+for (i in 1:nrow(moma)) {
+	text <- regmatches(moma$Dimensions[i], gregexpr("(?<=\\().*?(?=\\))", moma$Dimensions[i], perl=T))
+	if (as.character(substring(text, nchar(text)-1, nchar(text))) == "cm") {
+	  if (nchar(text) <= 8) {
+	    moma$height[i] <- as.numeric(substring(text, 1, nchar(text)-3))
+	    moma$width[i] <- as.numeric(substring(text, 1, nchar(text)-3))
+	  }
+	  else {
+	    text <- as.character(substring(text, 1, nchar(text)-3))
+	    moma$width[i] <- as.numeric(strsplit(text, " x ")[[1]][1])
+	    moma$height[i] <- as.numeric(strsplit(text, " x ")[[1]][2])
+	  }
+	}
+}
+
+moma <- na.omit(moma)
+moma$century <- as.factor((as.numeric(moma$cleandate)-1) %/% 100 + 1)
+
+for (i in 1:nrow(moma)) {
+  if (moma$cleandate[i] > 1871 & moma$cleandate[i] < 1901) {
+    moma$period[i] <- "1872-1900"
+  }
+  if (moma$cleandate[i] > 1900 & moma$cleandate[i] < 1931) {
+    moma$period[i] <- "1901-1930"
+  }
+  if (moma$cleandate[i] > 1930 & moma$cleandate[i] < 1961) {
+    moma$period[i] <- "1931-1960"
+  }
+  if (moma$cleandate[i] > 1960 & moma$cleandate[i] < 1991) {
+    moma$period[i] <- "1961-1990"
+  }
+  if (moma$cleandate[i] > 1990 & moma$cleandate[i] < 2015) {
+    moma$period[i] <- "1991-2014"
+  }
+}
+
+moma$period <- as.factor(moma$period)
+moma$ratio <- moma$width / moma$height
+
+```
+
+**Kai Li**
+2016/03/14
+
+## Introduction and literature review
+
+With a long and fruitful tradition of scholarship, it is surprising that the change of canvas size across the history of Western painting has not been a topic of empirical studies. 
+
+Even though it is worth noting that art historians have addressed this topic on the personal level frequently. For example, when discussing the genuity of Vincent Van Gogh’s Garden of the Asylum, Hendriks & Van Tilborgh (2001) compared the attributes of the canvas (size being one of them) of this painting with those of his other works. They noted that the size of Garden of the Asylum is only slightly different from his other works around the same period. Along with other criteria, such as the type of canvas used and more importantly, stroke style and pigment analysis, the authors concluded that this painting is very likely a work by Van Gogh. In their historical examination of Van Gogh’s style, as part of the information-theoretical measures, Rigau et al. (2010) traced the change of the canvas size of all his works, across the six periods of his painting. They didn’t try to run ANOVA to test the differences between the periods; rather, they just drew a highly descriptive conclusion that the size of his paintings almost doubled by the end of his life.
+
+However, a number of studies have discussed the statistical correlation between painting size and their prices, for example, in the auction market of Australia (Worthington & Higgs, 2006) and South Korea (Nahm, 2010). Worthington & Higgs’ work (2006) examined the prices of 30,227 paintings by modern and contemporary Australian artists sold at auction from 1973 to 2003. Based on their data, the authors developed a hedonic regression model by using the characteristics of the artists and artworks (including age and living status of the author, number of works sold, the size and medium of the painting, and the auction house, et al.) to predict the price. They drew the conclusion that size of canvas in general has a positive correlation with the price. On the other hand, there is a slightly different conclusion in Nahm’s paper (2010), which is that the price has U-shape correlation with the size of the painting. However, his conclusion is not surprising given the totally different sample of artworks that were analyzed in these two papers.
+
+In the light of this gap in the existing scholarship of art history, I want to explore the question of whether the canvas size of Western paintings has changed significantly across history. To study this question, I used the open metadata of all the collections of Museum of Modern Art (MoMA) that have been published on Github. Based on the nature of their collections, metadata, and the literature review, I would answer the following two questions in this paper:
+
+1.	If there is significant difference in the size of the painting in MoMA’s collections across different historical periods?
+2.	If there is significant difference in the ratio between width and height of the painting in MoMA’s collections across different historical periods?
+
+## Research method
+
+#### Dataset
+
+It was announced in 2015 that MoMA published the metadata of all its collections on Github and dedicated the data to the public domain under CCO License. (Romeo, 2015) Before MoMA, another important museum to published all it collection metadata online is Tate Gallery in the United Kingdom. (Myers, 2014)
+
+MoMA, located in New York, NY, was established in 1929 and opened its door in 1939. Through continuous donations and acquisitions, the number of its collection has grown to more than 150,000 by today, including paintings, sculptures, paintings, drawings, prints, photographs, et al., which makes it “one of the most comprehensive and panoramic views into modern art.” (Museum of Modern Art, n.d.)
+
+On MoMA’s Github page, the collection metadata are available in both CSV and Json formats. By March 1, 2016, there are 126,713 records in the file, which, according to the descriptions in the folder, “represent[s] all of the works that have been accessioned into MoMA’s collection and cataloged in our database.”
+
+Both the CSV and Json formats of the metadata file follow the same metadata structure, by including the following 14 metadata elements: Title, Artist, ArtistBio, Date, Medium, Dimensions, CreditLine, MoMANumber, Classification, Department, DateAcquired, CuratorApproved, ObjectID, and URL. 
+
+As the first step of preparing the data, only the “Painting” category in the “Classification” variable are taken for our analysis, given that this is the only category to describe Western paintings. In total, there are 2,256 records, which belong to the “Painting” category.
+
+Among all the metadata elements, Date and Dimensions are the two elements that are relevant with the research questions. However, both fields are not in the structured form in the file: they are largely in a natural language format and have more than one format in the file. As a result, some data cleaning was done in order to transform both of these elements into structured and ratio variables, the latter of which was further transformed into two elements, width and height. 
+
+About the date of the artwork, all the dates are transformed into four-digit single date. Those records without any date information were excluded from our dataset, after which step, there were 2226 records in the dataset. It is also worth noting that some artworks have proximate dates, in which case, only the first date is taken.
+
+In the current version of the metadata file, the time span of all MoMA’s collections is from 1872-2014. For the sake of the analysis, all the dates are grouped into five categorical year periods, namely, 1872-1900, 1901-1930, 1931-1960, 1961-1990, and 1991-2014. Below are the six examples, whose approximate year span crosses two periods stated above, and how they were eventually classified based on the schema.
+
+Painter         | Title                     | Year         | Period    
+----------------|---------------------------|--------------|-----------
+Ad Reinhardt    | Abstract painting         | 1960-1961    | 1931-1960 
+Edward Hunt     | Peter Hunt’s Antique Shop | 1930-1934    | 1931-1960
+Camille Bombois | Before entering the ring  | 1930-1935    | 1931-1960
+Bridget Riley   | Blue about                | 1983/2002    | 1961-1990
+Judit Reigl     | Guano-round               | 1958-64      | 1961-1990
+Ben Vautier     | Vielles Chansons C        | 1960 or 1962 | 1931-1960
+
+Below is the bar chart representing the count of each category:
+
+```{r fig.width = 7, fig.height = 4, echo = FALSE, warning=FALSE}
+
+plot <- ggplot(data = moma, aes(x = period)) + 
+  geom_bar(stat = "count") +
+  labs(x = "period", y = "count", title = "Count of each period") +
+  theme_economist()
+plot
+
+```
+
+In terms of the dimensions of the artwork, both width and height (in centimeter) were extracted from the natural language statements from the original file. Most of the paintings in the collection are regular 2-dimensional objects, with a definitive width and height. However, there are also a number of objects that belong to the “Painting” category, which are 3-dimensional objects, or with irregular 2-dimensional shapes. For the first situation, those objects are still included in our dataset, but only width and height are included for further analysis. For the second, those objects with only one dimension mentioned in the original statement were excluded. Below are the histograms of the width, height, and width/height ratio, respectively.
+
+```{R fig.width = 7, fig.height = 6, echo = FALSE, warning=FALSE}
+par(mfrow = c(2,2))
+hist(moma$width, breaks = 4000, main = "Histogram of width")
+hist(moma$height, breaks = 4000, main = "Histogram of height")
+hist(moma$ratio, breaks = 10000, xlim = c(0, 3), main = "Histogram of ratio")
+
+```
+
+It is worth noting that there are outliers in both variables. The widest work is “Imprints of a No. 50 Paintbrush Repeated at Regular Intervals of 30 cm” from Swiss painter Niele Toroni, whose width is 1,011 cm. The tallest work is “F-111” created by American painter James Rosenquist, whose height is 2,621 cm. It is interesting that both works were created in the 1960s, in 1964 and 1968 respectively. At this step, no work was done to deal with these outliers. Below is the scatterplot of width and height, which displays the outliers in these two variables.
+
+```{R fig.width = 7, fig.height = 5, echo = FALSE, warning=FALSE}
+plot <- ggplot(data = moma, aes(x = width, y = height)) +
+  geom_point() +
+  labs(x = "width", y = "height", title = "Scatterplot of width and height") +
+  theme_economist()
+plot
+```
+
+Below are the boxplots of width, height, and width/height ratio over the five periods, with all the outliers removed for the sake of presentation.
+
+```{R fig.width = 7, fig.height = 8, echo = FALSE, warning=FALSE}
+
+par(mfrow = c(2,2))
+boxplot(moma$width~moma$period, outline = F, xlab = "Period", ylab = "Count", main = "Width frequency")
+boxplot(moma$height~moma$period, outline = F, xlab = "Period", ylab = "Count", main = "Height frequency")
+boxplot(moma$ratio~moma$period, outline = F, xlab = "Period", ylab = "Count", main = "Ratio frequency")
+
+```
+
+#### Adequacy test
+
+Given the nature of the question, ANOVA test were used for the study. Below are the requirements of One-way ANOVA test:
+
+1. Standard residuals being normally distributed
+2. Homogeneity of variance
+3. Independence of observations
+4. Dependent variable being interval or ratio; independent variable being categorical
+
+The first two requirements are definitely met based on the nature of the dataset. However, the last two requirements can only be verified through a series of tests, which are presented below.
+
+In order to display the basic characteristics, boxplot and histogram of the three residuals are made below:
+
+```{R fig.width = 7, fig.height = 10, echo = FALSE, warning=FALSE}
+
+par(mfrow = c(3,2))
+
+boxplot(moma$width_stdres~moma$period, main = "Residual of width over period", xlab = "Period", ylab = "Residual")
+hist(moma$width_stdres, breaks = 50)
+boxplot(moma$height_stdres~moma$period, main = "Residual of height over period", xlab = "Period", ylab = "Residual")
+hist(moma$height_stdres, breaks = 50)
+boxplot(moma$ratio_stdres~moma$period, main = "Residual of ratio over period", xlab = "Period", ylab = "Residual")
+hist(moma$ratio_stdres, breaks = 50)
+
+```
+
+###### Standard residuals being normally distributed
+
+First of all, the normality of residuals of width, height, and width/height is tested over the year period. Four tests were done, including q-q plot, histogram, Anderson-Darling Test, and Shapiro-Wilk Test.
+
+In terms of width, all the tests done suggested that it’s not normally distributed. Below are the q-q plot and histogram of residuals of width, height, and ratio over period.
+
+```{R fig.width = 7, fig.height = 10, echo = FALSE, warning=FALSE}
+par(mfrow = c(3,2))
+
+## width
+
+width.lm <- lm(width ~ period, data = moma)
+width.stdres <- rstandard(width.lm)
+moma$width.stdres <- width.stdres
+qqnorm(width.stdres, 
+       ylab = "Standardized Residuals",
+       xlab = "Normal Scores of width/period",
+       main = "Ratio residual eruptions of width")
+qqline(width.stdres)
+hist(width.stdres, breaks = 200) ## histogram
+
+## height
+
+height.lm <- lm(height ~ period, data = moma)
+height.stdres <- rstandard(height.lm)
+moma$height.stdres <- height.stdres
+qqnorm(height.stdres, 
+       ylab = "Standardized Residuals",
+       xlab = "Normal Scores of height/period",
+       main = "Ratio residual eruptions of height")
+qqline(height.stdres)
+hist(height.stdres, breaks = 200) ## histogram
+
+## ratio
+
+ratio.lm <- lm(ratio ~ period, data = moma)
+ratio.stdres <- rstandard(ratio.lm)
+moma$ratio.stdres <- ratio.stdres
+qqnorm(ratio.stdres, 
+       ylab = "Standardized Residuals",
+       xlab = "Normal Scores of ratio/period",
+       main = "Ratio residual eruptions of ratio")
+qqline(ratio.stdres)
+hist(ratio.stdres, breaks = 200) ## histogram
+
+```
+
+To support visual evidences, Anderson-Darling test and Shapiro-Wilk test were also conducted over the standard residuals for each of the three variables. Below are the results.
+
+```{R echo = FALSE, warning=FALSE}
+
+library(nortest)
+
+ad.test(width.stdres)
+shapiro.test(width.stdres)
+ad.test(height.stdres)
+shapiro.test(height.stdres)
+ad.test(ratio.stdres)
+shapiro.test(ratio.stdres)
+
+```
+
+It is clear that the standard residuals of neither of the three variables are normally distributed in either the plots or the tests. All the three variables got p-value significantly smaller than 0.05, which means that the null hypothesis that the sample is from a normal distribution can be rejected.
+
+###### Homogeneity of variance
+
+To determine if the variances of the three variables are homogeneous, descriptive analysis and Levene's test were conducted to the three variables.
+
+```{R echo = FALSE, warning=FALSE}
+
+library(psych)
+library(lawstat)
+
+describeBy(moma[, c(21, 22, 23)], moma[, 19])
+
+levene.test(moma$width_stdres, moma$period)
+levene.test(moma$height_stdres, moma$period)
+levene.test(moma$ratio_stdres, moma$period)
+```
+
+It is obvious that because the p-value for the residuals of variables of width and height are below 0.05, the null hypothesis that the variances are honogeneous can be rejected. However, this null hypothesis cannot be rejected for the variable of ratio.
+
+###### Independence of observations
+
+In order to test the independence of the residuals of the three dependant variables, Durbin-Watson test was conducted, the results of which was displayed below:
+
+```{R echo = FALSE, warning=FALSE}
+
+library(lmtest)
+
+plot(moma$width_stdres~moma$period)
+
+dwtest(moma$width_stdres~moma$period, alternative = c("two.sided"))
+dwtest(moma$height_stdres~moma$period, alternative = c("two.sided"))
+dwtest(moma$ratio_stdres~moma$period, alternative = c("two.sided"))
+```
+
+The null hypothesis of Durbin-Watson test is that the autocorrelation of disturbance is 0, which means the sample is not dependant. Because only the result on the standard residual of ratio is above 0.05, it means that its independance null hypothesis cannot be rejected; while the null hypothesis for ratio can be rejected.
+
+###### Outliers
+
+As is shown by the boxplots of the residuals of thee three variables without removing outliers, there are a number of outliers in each of the three residual variables.
+
+```{R fig.width = 7, fig.height = 8, echo = FALSE, warning=FALSE}
+
+par(mfrow = c(2,2))
+boxplot(moma$width_stdres~moma$period, outline = T, xlab = "Period", ylab = "Count", main = "Width frequency")
+boxplot(moma$height_stdres~moma$period, outline = T, xlab = "Period", ylab = "Count", main = "Height frequency")
+boxplot(moma$ratio_stdres~moma$period, outline = T, xlab = "Period", ylab = "Count", main = "Ratio frequency")
+
+```
+
+###### Conclusions of adequacy tests
+
+It is obvious that because all of the three variables fail to meet the requirements of normally distribution and outliers, regular one-way ANOVA cannot be applied to any of them.
+
+#### Statistical analysis
+
+Based on the adequacy tests, one-way ANOVA cannot be applied to any of the variables. All of the three variables can only be analyzed by nonparametric methods. Because the independent variable, period, has five degrees. Two methods are possible candidates, namely, Kruskal-Wallis test and Welch's ANOVA. Even though both methods are nonparametric, which means that both of them don't require normally distribution. However, Kruskal-Wallis test requires homogeneity of variance, unlike Welch's ANOVA. (McDonald, 2014) As a result, based on the adequacy tests conducted above, Kruskal-Wallis test is applied to ratio, and Welch's ANOVA is applied to width and height.
+
+Welch's ANOVA and its post hoc test, Scheffe's test were conducted in SPSS 22. Kruskal-Wallis test and its post hoc test, Dunn's test were conducted using RStudio 0.99 with packages Stats (version 3.2.3) and dunn.test (version 1.3.2).
+
+## Results
+
+The results of width are presented below:
+
+The result from Welch's ANOVA indicate that the null hypothesis that there is no significant difference in width between any period group can be rejected with 95% confidence interval, given its p-value approximating 0, and F-value being 108.91, much larger than the critical F-value (when df1 = 4 and df2 = 319.994).
+
+The results from Scheffe's test indicate that significant differences exist between any group, except for Group 1 (1872-1900) and Group 2 (1901-1930), whose p-value is 0.435, making its null hypothesis not being able to be rejected.
+
+The results of height are presented below:
+
+The result from Welch's ANOVA indicate that the null hypothesis that there is no significant difference in height between any period group can be rejected with 95% confidence interval, given its p-value approximating 0, and F-value being 77.116, much larger than the critical F-value (when df1 = 4 and df2 = 319.994).
+
+The results from Scheffe's test indicate that significant differences exist between any group, except for Group 1 and Group 2 (p-value = 0.947), Group 1 and Group 3 (p-value = 0.228), and Group 4 and Group 5 (p-value = 0.217), whose null hypothesis cannot be rejected.
+
+The results of width/height ratio are presented below:
+
+```{R echo = FALSE, warning=FALSE}
+
+kruskal.test(x = moma$ratio, g = moma$period, data = moma)
+
+library(dunn.test)
+
+dunn.test(x = moma$ratio, g = moma$period, method = "bonferroni")
+
+```
+
+The result from Kruskal-Wallis test indicate that the null hypothesis that there is no significant difference in ratio between any period group can be rejected with 95% condifence interval, given its p-value being 2.417e-06. 
+
+It's worth noting that Bonferroni p-value adjustment method was adopted in Dunn's test, which is a technique that is commonly used in multiple comparisons. (McDonald, 2014) And as compared with other techniques, it could significantly reduce the possibility of Type I error while increasing the possibilityof Type II error. The reason why this relatively strict technique was selected because of the relatively similar boxplot shown above.
+
+According to the results of the Dunn's test using Bonferroni Adjustment method, only only Group 2 and Group 3, Group 2 and Group 4, and Group 4 and Group 5 have significant differences. The null hypothesis of any other group-pairs cannot be rejected.
+
+## Conclusion
+
+This study tests the differences in width, height, and width/height ratio of the Western paintings across the five periods in MoMA’s history, using quantitative methods. It suggested that the widths of the paintings are mostly different across periods, while heights are less homogeneous as compared. And the ratio of paintings is hardly significantly different except for three period-pairs.
+	
+More importantly, the results from the ANOVA tests also suggest that the means of width and height have been increasing in general across the history that MoMA's collections cover. This trend, along with the period differences, will be further explored in our future studies. 
+
+## Reference
+
+Hendriks, E., & Van Tilborgh, L. (2001). Van Gogh’s’ Garden of the Asylum’: Genuine or Fake? The Burlington Magazine, 143(1176), 145–156.
+McDonald, J.H. 2014. Handbook of Biological Statistics (3rd ed.). Sparky House Publishing, Baltimore, Maryland. 
+Museum of Modern Art. (n.d.). Museum History. Retrieved March 7, 2016, from http://www.moma.org/about/history
+Myers, R. (2014). Tate Release Collection Metadata As Open Data. Retrieved March 7, 2016, from http://openarthistory.org/2014/02/08/tate-release-collection-metadata-as-open-data/
+Nahm, J. (2010). Price determinants and genre effects in the Korean art market: a partial linear analysis of size effect. Journal of Cultural Economics, 34(4), 281–297. http://doi.org/10.1007/s10824-010-9126-y
+Rigau, J., Feixas, M., Sbert, M., & Wallraven, C. (2010). Toward Auvers Period: Evolution of van Gogh’s Style. In Computational Aesthetics (pp. 99–106). Retrieved from http://ima.udg.edu/~rigau/Publications/Rigau10A.pdf
+Romeo, F. (2015, July 28). Thousands of Exhausted Things, or why we dedicated MoMA’s collection data to the public domain. Retrieved March 7, 2016, from https://medium.com/digital-moma/thousands-of-exhausted-things-or-why-we-dedicated-moma-s-collection-data-to-the-public-domain-7e0a7165e99#.ugs8d3t92
+Worthington, A. C., & Higgs, H. (2006). A Note on Financial Risk, Return and Asset Pricing in Australian Modern and Contemporary Art. Journal of Cultural Economics, 30(1), 73–84. http://doi.org/10.1007/s10824-005-9000-5
+
